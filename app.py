@@ -4,17 +4,18 @@ def calculate_tax_new_regime(taxable_income):
     # New Regime slabs (FY 2025–26)
     slabs = [
         (0, 300000, 0.0),
-        (300001, 600000, 0.05),
-        (600001, 900000, 0.10),
-        (900001, 1200000, 0.15),
-        (1200001, 1500000, 0.20),
-        (1500001, float('inf'), 0.30),
+        (300000, 600000, 0.05),
+        (600000, 900000, 0.10),
+        (900000, 1200000, 0.15),
+        (1200000, 1500000, 0.20),
+        (1500000, float('inf'), 0.30),
     ]
 
     tax = 0
     for lower, upper, rate in slabs:
         if taxable_income > lower:
-            tax += (min(taxable_income, upper) - lower) * rate
+            taxable_amount = min(taxable_income, upper) - lower
+            tax += taxable_amount * rate
         else:
             break
 
