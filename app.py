@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-import argparse
-import sys
-import os
+import streamlit as st
 
 def calculate_tax_new_regime(taxable_income, is_senior_citizen=False):
     """
     Calculate income tax under New Tax Regime for FY 2025–26 (AY 2026–27).
-    Adjusts for senior citizens (60+ years) with higher exemption if applicable.
+    Supports resident individuals, including senior citizens.
     """
-    # New Regime slabs (FY 2025–26)
+    # New Regime slabs (FY 2025–26, Budget 2025)
     slabs = [
-        (0, 400000, 0.0),  # Basic exemption increased to ₹4 lakh (Budget 2025)
+        (0, 400000, 0.0),  # Basic exemption ₹4 lakh
         (400001, 700000, 0.05),
         (700001, 1000000, 0.10),
         (1000001, 1200000, 0.15),
@@ -18,8 +16,6 @@ def calculate_tax_new_regime(taxable_income, is_senior_citizen=False):
         (1500001, float('inf'), 0.30),
     ]
 
-    # Senior citizens (60-80 years) or super seniors (80+ years) may opt for Old Regime,
-    # but we assume New Regime as default per Budget 2025
     tax = 0
     for lower, upper, rate in slabs:
         if taxable_income > lower:
@@ -28,81 +24,82 @@ def calculate_tax_new_regime(taxable_income, is_senior_citizen=False):
             break
 
     # Section 87A rebate: Up to ₹12 lakh taxable income, max ₹60,000
+    rebate = 0
     if taxable_income <= 1200000:
         rebate = min(tax, 60000)
         tax -= rebate
 
-    # Add Health and Education Cess (4%)
+    # Health and Education Cess (4%)
     cess = tax * 0.04
     total_tax = tax + cess
 
-    return max(0, round(total_tax, 2))
+    return {
+        "tax_before_rebate": round(tax, 2),
+        "rebate_87A": round(rebate, 2),
+        "cess": round(cess, 2),
+        "total_tax": round(total_tax, 2)
+    }
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Income Tax Calculator for FY 2025–26 (New Regime), with senior citizen support",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument('--salary', type=float, required=True, help='Annual salary income')
-    parser.add_argument('--interest', type=float, default=0, help='Interest income (e.g., bank deposits)')
-    parser.add_argument('--capital_gains', type=float, default=0, help='Capital gains (short/long-term, if taxable)')
-    parser.add_argument('--mutual_funds', type=float, default=0, help='Mutual fund income (if not taxed separately)')
-    parser.add_argument('--other_income', type=float, default=0, help='Other income (e.g., rent, pension)')
-    parser.add_argument('--agriculture_income', type=float, default=0, help='Agricultural income (exempt up to ₹5,000)')
-    parser.add_argument('--senior_citizen', action='store_true', help='Flag if taxpayer is 60+ years (affects Old Regime comparison)')
+    st.set_page_config(page_title="Income Tax Calculator FY 2025–26", page_icon="💰")
+    st.title("Indian Income Tax Calculator (FY 2025–26, New Tax Regime)")
+    st.markdown("""
+        Calculate your income tax under the New Tax Regime for FY 2025–26 (AY 2026–27).
+        Includes Section 87A rebate up to ₹12 lakh taxable income and standard deduction of ₹75,000.
+        Built for resident individuals, including senior citizens.
+    """)
 
-    try:
-        args = parser.parse_args()
-    except SystemExit:
-        print("Error: Please provide the required --salary argument. Example: python app.py --salary 1000000")
-        sys.exit(1)
+    # Input form
+    with st.form("tax_form"):
+        st.header("Enter Your Income Details (₹)")
+        salary = st.number_input("Annual Salary Income", min_value=0.0, value=0.0, step=1000.0)
+        interest = st.number_input("Interest Income (e.g., bank deposits)", min_value=0.0, value=0.0, step=1000.0)
+        capital_gains = st.number_input("Capital Gains (short/long-term, if taxable)", min_value=0.0, value=0.0, step=1000.0)
+        mutual_funds = st.number_input("Mutual Fund Income (if not taxed separately)", min_value=0.0, value=0.0, step=1000.0)
+        other_income = st.number_input("Other Income (e.g., rent, pension)", min_value=0.0, value=0.0, step=1000.0)
+        agriculture_income = st.number_input("Agricultural Income (exempt up to ₹5,000)", min_value=0.0, value=0.0, step=1000.0)
+        senior_citizen = st.checkbox("I am a Senior Citizen (60+ years)")
 
-    # Validate inputs
-    for income_type, value in [
-        ('Salary', args.salary),
-        ('Interest', args.interest),
-        ('Capital Gains', args.capital_gains),
-        ('Mutual Funds', args.mutual_funds),
-        ('Other Income', args.other_income),
-        ('Agricultural Income', args.agriculture_income)
-    ]:
-        if value < 0:
-            print(f"Error: {income_type} cannot be negative (provided: ₹{value})")
-            sys.exit(1)
+        submitted = st.form_submit_button("Calculate Tax")
 
-    # Calculate gross income
-    gross_income = args.salary + args.interest + args.mutual_funds + args.other_income
+    if submitted:
+        try:
+            # Validate inputs
+            if any(x < 0 for x in [salary, interest, capital_gains, mutual_funds, other_income, agriculture_income]):
+                st.error("Income values cannot be negative.")
+                return
 
-    # Apply standard deduction (₹75,000 for salaried taxpayers)
-    std_deduction = 75000 if args.salary > 0 else 0
+            # Calculate gross income
+            gross_income = salary + interest + capital_gains + mutual_funds + other_income
 
-    # Agricultural income exemption (up to ₹5,000)
-    agriculture_exemption = min(args.agriculture_income, 5000)
-    taxable_income = max(0, gross_income - std_deduction - agriculture_exemption)
+            # Apply deductions
+            std_deduction = 75000 if salary > 0 else 0
+            agriculture_exemption = min(agriculture_income, 5000)
+            taxable_income = max(0, gross_income - std_deduction - agriculture_exemption)
 
-    # Calculate tax
-    total_tax = calculate_tax_new_regime(taxable_income, args.senior_citizen)
+            # Calculate tax
+            tax_result = calculate_tax_new_regime(taxable_income, senior_citizen)
 
-    # Output results
-    print("\n=== Income Tax Calculation (FY 2025–26, New Tax Regime) ===")
-    print(f"Taxpayer Status: {'Senior Citizen (60+)' if args.senior_citizen else 'Resident Individual'}")
-    print(f"Salary Income: ₹{args.salary:,.2f}")
-    print(f"Interest Income: ₹{args.interest:,.2f}")
-    print(f"Mutual Fund Income: ₹{args.mutual_funds:,.2f}")
-    print(f"Other Income: ₹{args.other_income:,.2f}")
-    print(f"Agricultural Income (Exempt up to ₹5,000): ₹{args.agriculture_income:,.2f}")
-    print(f"Gross Income: ₹{gross_income:,.2f}")
-    print(f"Standard Deduction: ₹{std_deduction:,.2f}")
-    print(f"Agricultural Exemption: ₹{agriculture_exemption:,.2f}")
-    print(f"Taxable Income: ₹{taxable_income:,.2f}")
-    print(f"Income Tax Payable (including 4% cess): ₹{total_tax:,.2f}")
+            # Display results
+            st.header("Tax Calculation Results")
+            st.write(f"**Taxpayer Status**: {'Senior Citizen (60+)' if senior_citizen else 'Resident Individual'}")
+            st.write(f"**Salary Income**: ₹{salary:,.2f}")
+            st.write(f"**Interest Income**: ₹{interest:,.2f}")
+            st.write(f"**Capital Gains**: ₹{capital_gains:,.2f}")
+            st.write(f"**Mutual Fund Income**: ₹{mutual_funds:,.2f}")
+            st.write(f"**Other Income**: ₹{other_income:,.2f}")
+            st.write(f"**Agricultural Income (Exempt up to ₹5,000)**: ₹{agriculture_income:,.2f}")
+            st.write(f"**Gross Income**: ₹{gross_income:,.2f}")
+            st.write(f"**Standard Deduction**: ₹{std_deduction:,.2f}")
+            st.write(f"**Agricultural Exemption**: ₹{agriculture_exemption:,.2f}")
+            st.write(f"**Taxable Income**: ₹{taxable_income:,.2f}")
+            st.write(f"**Tax Before Rebate**: ₹{tax_result['tax_before_rebate']:,.2f}")
+            st.write(f"**Section 87A Rebate**: ₹{tax_result['rebate_87A']:,.2f}")
+            st.write(f"**Cess (4%)**: ₹{tax_result['cess']:,.2f}")
+            st.write(f"**Total Tax Payable**: ₹{tax_result['total_tax']:,.2f}")
 
-if __name__ == '__main__':
-    # Ensure script runs in the correct directory
-    try:
-        os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    except FileNotFoundError:
-        print("Error: Unable to set working directory. Ensure script is run from a valid path.")
-        sys.exit(1)
+        except Exception as e:
+            st.error(f"Calculation error: {str(e)}")
 
+if __name__ == "__main__":
     main()
